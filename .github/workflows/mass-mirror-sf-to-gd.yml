@@ -49,14 +49,11 @@ jobs:
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.8220.52 Safari/537.36 Brave/4.0.2090.104"
 
           # --- POOL SERVER MIRROR ---
+          # "twds" "webwerks" "deac-riga" "altushost-swe" "psychz"
+          
           BASE_MIRRORS=(
-            "nchc"
+            "master"
             "sf-west-interserver-2.dl.sourceforge.net"
-            "twds"
-            "webwerks"
-            "deac-riga"
-            "altushost-swe"
-            "psychz"
           )
 
           echo "📂 Memulai proses..."
