@@ -103,7 +103,7 @@ jobs:
                 fi
                 
                 # Download dengan aria2c
-                aria2c -x 16 -s 16 -j 4 \
+                aria2c -x 1 -s 1 -j 1 \
                   -c \
                   --min-split-size=1M \
                   --user-agent="$UA" \
