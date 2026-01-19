@@ -102,15 +102,17 @@ jobs:
                    final_url="https://${mirror}.dl.sourceforge.net/project/${temp_path}?viasf=1"
                 fi
                 
-                # Download dengan aria2c (Settingan kalem agar tidak diblokir)
-                aria2c -x 8 -s 8 -j 8 \
-                  --min-split-size=10M \
+                # Download dengan aria2c
+                aria2c -x 16 -s 16 -j 4 \
+                  -c \
+                  --min-split-size=1M \
                   --user-agent="$UA" \
                   --check-certificate=false \
-                  --allow-overwrite=true \
-                  --summary-interval=10 \
-                  --connect-timeout=15 \
-                  --max-tries=2 \
+                  --file-allocation=none \
+                  --summary-interval=0 \
+                  --connect-timeout=60 \
+                  --max-tries=5 \
+                  --retry-wait=3 \
                   --console-log-level=warn \
                   -o "$filename" "$final_url"
 
