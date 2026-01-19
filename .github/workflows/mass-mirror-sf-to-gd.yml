@@ -1,0 +1,158 @@
+name: Mass Mirror (Random Shuffle Mirror)
+on:
+  workflow_dispatch:
+    inputs:
+      folder_id:
+        description: 'Google Drive Folder ID tujuan'
+        required: true
+
+jobs:
+  random-mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 2. Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl unzip
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: 3. Proses Mirroring
+        shell: bash
+        env:
+          RAW_CID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          RAW_SEC: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          RAW_TOK: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ inputs.folder_id }}
+        run: |
+          CL_ID=$(echo "$RAW_CID" | tr -d '\n' | tr -d '\r' | xargs)
+          CL_SEC=$(echo "$RAW_SEC" | tr -d '\n' | tr -d '\r' | xargs)
+          R_TOK=$(echo "$RAW_TOK" | tr -d '\n' | tr -d '\r' | xargs)
+
+          export RCLONE_CONFIG_MYDRIVE_TYPE=drive
+          export RCLONE_CONFIG_MYDRIVE_CLIENT_ID="$CL_ID"
+          export RCLONE_CONFIG_MYDRIVE_CLIENT_SECRET="$CL_SEC"
+          export RCLONE_CONFIG_MYDRIVE_SCOPE=drive
+          export RCLONE_CONFIG_MYDRIVE_TOKEN="{\"access_token\":\"\",\"token_type\":\"Bearer\",\"refresh_token\":\"$R_TOK\",\"expiry\":\"2023-01-01T00:00:00Z\"}"
+
+          echo "✅ Konfigurasi Rclone siap."
+          
+          if [ ! -f "url.txt" ]; then
+            echo "❌ Error: File url.txt tidak ditemukan!"
+            exit 1
+          fi
+
+          # User Agent
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+          # --- POOL SERVER MIRROR ---
+          BASE_MIRRORS=(
+            "psychz"
+            "jaist"
+            "nchc"
+            "netcologne"
+            "sf-west-interserver-2"
+            "twds"
+            "webwerks"
+            "deac-riga"
+            "altushost-swe"
+            "autoselect"
+          )
+
+          echo "📂 Memulai proses..."
+          set +e 
+
+          while IFS= read -r url || [ -n "$url" ]; do
+            
+            if [[ -z "$url" ]] || [[ "$url" == \#* ]]; then continue; fi
+            url=$(echo "$url" | tr -d '\r')
+
+            echo "==================================================="
+            echo "➡️ Target: $url"
+
+            # 1. Parsing Path
+            temp_path="${url#*projects/}"
+            temp_path="${temp_path//\/files\//\/}"
+            temp_path="${temp_path%/download}"
+            temp_path="${temp_path%\?*}"
+            
+            filename=$(basename "$temp_path")
+            echo "📄 Nama File: $filename"
+
+            download_success=false
+
+            # --- LOGIKA PENGACAKAN (SHUFFLE) ---
+            SHUFFLED_MIRRORS=($(shuf -e "${BASE_MIRRORS[@]}"))
+            
+            echo "🎲 Urutan Mirror (Acak): ${SHUFFLED_MIRRORS[*]}"
+
+            # 2. LOOPING MIRROR (Sesuai hasil acakan)
+            for mirror in "${SHUFFLED_MIRRORS[@]}"; do
+                echo "-----------------------------------"
+                echo "📡 Mencoba Mirror: $mirror"
+                
+                # Construct URL
+                if [[ "$mirror" == "autoselect" ]]; then
+                   final_url="https://downloads.sourceforge.net/project/${temp_path}?use_mirror=autoselect"
+                else
+                   # Format direct mirror subdomain
+                   final_url="https://${mirror}.dl.sourceforge.net/project/${temp_path}?viasf=1"
+                fi
+                
+                # Download dengan aria2c (Settingan kalem agar tidak diblokir)
+                aria2c -x 8 -s 8 -j 8 \
+                  --min-split-size=10M \
+                  --user-agent="$UA" \
+                  --check-certificate=false \
+                  --allow-overwrite=true \
+                  --summary-interval=10 \
+                  --connect-timeout=15 \
+                  --max-tries=2 \
+                  --console-log-level=warn \
+                  -o "$filename" "$final_url"
+
+                # Cek File
+                if [ -f "$filename" ]; then
+                    filesize=$(stat -c%s "$filename")
+                    # Validasi file > 1MB (bukan file HTML error)
+                    if [ "$filesize" -gt 1000000 ]; then
+                        echo "✅ Download SUKSES dari $mirror."
+                        download_success=true
+                        break
+                    else
+                        # Hapus file sampah dan lanjut ke mirror berikutnya
+                        rm -f "$filename"
+                    fi
+                fi
+            done
+
+            # 3. UPLOAD KE GDRIVE (Settingan Anti-Limit 429)
+            if [ "$download_success" = true ]; then
+                echo "⬆️ Uploading ke Google Drive..."
+                
+                rclone copy "$filename" mydrive: \
+                  --drive-root-folder-id "$FOLDER_ID" \
+                  --drive-chunk-size 128M \
+                  --tpslimit 5 \
+                  --checkers 2 \
+                  --transfers 2 \
+                  --user-agent "$UA" \
+                  -v -P
+                
+                if [ $? -eq 0 ]; then
+                    echo "✅ Upload Selesai."
+                    rm -f "$filename"
+                else
+                    echo "❌ Upload Gagal (Google Limit). Lanjut ke file berikutnya."
+                    rm -f "$filename"
+                fi
+            else
+                echo "❌ FATAL: Download gagal di semua mirror acak."
+            fi
+            
+          done < url.txt
+
+          echo "🎉 SELESAI SEMUA!"
