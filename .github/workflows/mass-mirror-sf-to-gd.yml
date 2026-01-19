@@ -51,6 +51,12 @@ jobs:
           # --- POOL SERVER MIRROR ---
           BASE_MIRRORS=(
             "nchc"
+            "sf-west-interserver-2.dl.sourceforge.net"
+            "twds"
+            "webwerks"
+            "deac-riga"
+            "altushost-swe"
+            "psychz"
           )
 
           echo "📂 Memulai proses..."
